@@ -159,6 +159,8 @@ public:
     void go()
     {
         _index = 0;
+        _inCB = false;
+        _callNext = false;
         _callList[_index](this);
     }
     /**
@@ -170,11 +172,20 @@ public:
         if (e && _onError) {
             _onError(this, e);
         } else {
-            _index++;
-            if(_index < _callList.get_num_elements()) {
-                _callList[_index](this);
-            } else if (_finally){
-                _finally(this);
+            if (_inCB) {
+                _callNext = true;
+            } else {
+                do {
+                    _callNext = false;
+                    _index++;
+                    if(_index < _callList.get_num_elements()) {
+                        _inCB = true;
+                        _callList[_index](this);
+                        _inCB = false;
+                    } else if (_finally){
+                        _finally(this);
+                    }
+                } while(_callNext);
             }
         }
     }
@@ -184,6 +195,8 @@ protected:
     unsigned _index;
     mbed::util::FunctionPointer2<void, Series<E> *, E> _onError;
     Action_t _finally;
+    bool _inCB;
+    bool _callNext;
 };
 
 }
