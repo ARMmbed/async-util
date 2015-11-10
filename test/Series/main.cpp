@@ -94,6 +94,8 @@ void check(int i) {
         testIdx++;
         test();
     } else {
+        testIdx++;
+        printf("Tested %u possible calling combinations of Series\r\n",testIdx);
         MBED_HOSTTEST_RESULT(1);
     }
 }

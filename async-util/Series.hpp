@@ -28,13 +28,10 @@
 #include "core-util/FunctionPointerBase.h"
 #include "core-util/Array.h"
 #include "ualloc/ualloc.h"
-namespace mbed {
-namespace util {
 namespace async {
 namespace v0 {
 
 #define ARRAY_GROWBY 4
-
 
 /**
  * @brief A generic sequential operation container
@@ -267,7 +264,5 @@ protected:
 
 }
 }
-}
-}
 
- #endif // __CORE_UTIL_SERIES_H__
+ #endif // __ASYNC_UTIL_SERIES_H__
