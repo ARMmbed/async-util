@@ -3,75 +3,138 @@
 #include "async-util/Series.hpp"
 #include "minar/minar.h"
 #include "mbed-drivers/test_env.h"
+#include "SeriesFuncs.hpp"
+#include <algorithm>
 
-using namespace mbed::util;
 
-typedef async::v0::Series<int> iSeries;
+void fin(iSeries::DoneCB cb, int i)
+{
+    Actual.finSeq = seq++;
+    cb(i);
+}
 
-size_t seq = 1;
-#define NTESTS 5
-size_t CallCheck[NTESTS] = {0};
+unsigned testIdx;
+bool success = true;
+const unsigned MaximumErrors = 4;
+iSeries *ser;
 
-void f0(iSeries::DoneCB_t cb)
-{
-    CallCheck[0] = seq++;
-    printf("f0\r\n");
-    cb(0);
-}
-void f1(iSeries::DoneCB_t cb)
-{
-    CallCheck[1] = seq++;
-    printf("f1\r\n");
-    minar::Scheduler::postCallback(cb.bind(1));
-    //s->CallNext(0);
-}
-void f2(iSeries::DoneCB_t cb)
-{
-    CallCheck[3] = seq++;
-    printf("f2\r\n");
-    cb(0);
-}
-void fin(iSeries::DoneCB_t cb)
-{
-    CallCheck[4] = seq++;
-    printf("fin\r\n");
-    cb(0);
-}
-void except(iSeries::DoneCB_t cb, int i)
-{
-    printf("Exception %i\r\n", i);
-    CallCheck[2] = seq++;
-    cb(0);
-}
-void check(int i) {
-    (void) i;
-    bool passed = true;
-    for(size_t p = 0; p < NTESTS; p++) {
-        if (CallCheck[p] != p+1) {
-            passed = false;
+static void test();
+
+// Initialize with the initial test
+struct testCase_s CurrentTest = {
+    .functions = {ics0, ics1, ice0, ice1, dcs0, dcs1, dce0, dce1},
+    .exception = ei,
+    .funcSeq = {1, 2, 3, 0, 0, 0, 0, 0},
+    .errSeq  = {4, 0, 0, 0},
+    .errors = 0,
+    .finSeq = 0,
+    .fin = false,
+    .cbExpect = 1
+};
+
+void generate(struct testCase_s *testCase) {
+    unsigned gSeq = 1;
+    unsigned eCnt = 0;
+    bool seen[4] = {false, false, false, false};
+    memset(&testCase->funcSeq, 0, sizeof(testCase->funcSeq));
+    memset(&testCase->errSeq, 0, sizeof(testCase->errSeq));
+    for (int i = 0; i < 8; i++) {
+        uint8_t funcType = funcTypes[i];
+        unsigned funcIdx = funcType*2;
+        if (!seen[funcType]) {
+            seen[funcType] = true;
+        } else {
+            funcIdx++;
+        }
+        testCase->functions[i] = TestFunctions[funcIdx];
+        testCase->funcSeq[funcIdx] = gSeq++;
+        if (callsException[funcType]) {
+            testCase->errSeq[eCnt++] = gSeq++;
+        }
+        if (eCnt > testCase->errors){
+            break;
         }
     }
-    MBED_HOSTTEST_RESULT(passed);
+    testCase->finSeq = (testCase->fin)?gSeq++:0;
+    testCase->cbExpect = (eCnt > testCase->errors?1:0);
+}
+
+bool nextTest(struct testCase_s *testCase) {
+    if (testCase->errors < MaximumErrors) {
+        testCase->errors++;
+    } else if (testCase->exception == ei) {
+        testCase->exception = ed;
+        testCase->errors = 0;
+    } else if (!testCase->fin) {
+        testCase->exception = ei;
+        testCase->errors = 0;
+        testCase->fin = true;
+    } else if (std::next_permutation(funcTypes,funcTypes+nTestFunctions)) {
+        testCase->exception = ei;
+        testCase->errors = 0;
+        testCase->fin = false;
+    } else {
+        return false;
+    }
+    generate(testCase);
+    return true;
 }
 
 
+void check(int i) {
+    Actual.cbExpect = i;
+    if (Actual.finSeq) {
+        Actual.fin = true;
+    }
+    delete ser;
+    if (0 != memcmp(&Actual, &CurrentTest, sizeof(Actual))) {
+        MBED_HOSTTEST_RESULT(0);
+    }
+    if (nextTest(&CurrentTest)) {
+        testIdx++;
+        test();
+    } else {
+        MBED_HOSTTEST_RESULT(1);
+    }
+}
+
+void deferCheck(int i) {
+    minar::Scheduler::postCallback(FunctionPointer1<void,int>(check).bind(i));
+}
+
+
+void test() {
+    // Generate test case
+    ser = new iSeries;
+    memset(&Actual, 0, sizeof(Actual));
+    memcpy(Actual.functions, CurrentTest.functions, sizeof(Actual.functions));
+    Actual.exception = CurrentTest.exception;
+
+    ser->call(iSeries::Action(CurrentTest.functions[0]));
+    for (int i = 1; i < 8; i++) {
+        ser->then(iSeries::Action(CurrentTest.functions[i]));
+    }
+    ser->except(iSeries::ErrorHandler(CurrentTest.exception));
+    if (CurrentTest.fin){
+        ser->finally(iSeries::ErrorHandler(fin));
+    }
+    seq = 1;
+    errMax = CurrentTest.errors;
+    if ((testIdx & 0xFF) == 0){
+        printf("Test %u\r\n",testIdx);
+    }
+    minar::Scheduler::postCallback(iSeries::Action(ser, &iSeries::go).bind(deferCheck));
+}
 extern "C" void app_start(int argc, char *argv[])
 {
     (void) argc;
     (void) argv;
     static Serial pc(USBTX,USBRX);
     pc.baud(115200);
-    MBED_HOSTTEST_TIMEOUT(5);
+    MBED_HOSTTEST_TIMEOUT(120);
     MBED_HOSTTEST_SELECT(default);
     MBED_HOSTTEST_DESCRIPTION(Series Test);
     MBED_HOSTTEST_START("Series");
-    static iSeries ser;
-
-
-    ser.call(iSeries::Action_t(f0))
-       .then(iSeries::Action_t(f1))
-       .then(iSeries::Action_t(f2))
-       .except(iSeries::ExceptionHandler_t(except))
-       .finally(iSeries::Action_t(fin));
-    minar::Scheduler::postCallback(iSeries::Action_t(&ser, &iSeries::go).bind(check));
+    testIdx = 0;
+    test();
 }

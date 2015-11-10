@@ -14,8 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef __CORE_UTIL_SERIES_H__
-#define __CORE_UTIL_SERIES_H__
+#ifndef __ASYNC_UTIL_SERIES_H__
+#define __ASYNC_UTIL_SERIES_H__
 
 /**
  * \file
@@ -42,12 +42,9 @@ namespace v0 {
  * function which is called. This allows asynchronous operations to be executed in sequence, but only requires tracking
  * the Series object itself.
  *
- * To create a series object, use one of the two constructors. The default constructor can be tuned to the expected
- * number of arguments.
+ * To indicate that a function has completed, call the supplied callback with an argument that evaluates to false.
  *
- * To indicate that a function has completed, call CallNext with an argument that evaluates to false.
- *
- * To indicate an error, call CallNext with an argument that evaluates to true.
+ * To indicate an error, call the supplied callback with an argument that evaluates to true.
  *
  * To set an error handler, call except().
  *
@@ -62,10 +59,10 @@ namespace v0 {
 template<typename E>
 class Series {
 public:
-    typedef mbed::util::FunctionPointer1<void, E> DoneCB_t;
-    typedef mbed::util::FunctionPointer1<void, DoneCB_t> Action_t;
-    typedef mbed::util::FunctionPointer2<void, DoneCB_t, E> ExceptionHandler_t;
-    typedef mbed::util::Array<Action_t> SeriesArray_t;
+    typedef mbed::util::FunctionPointer1<void, E> DoneCB;
+    typedef mbed::util::FunctionPointer1<void, DoneCB> Action;
+    typedef mbed::util::FunctionPointer2<void, DoneCB, E> ErrorHandler;
+    typedef mbed::util::Array<Action> SeriesArray;
 
     /**
      * Create a new, empty series.
@@ -76,9 +73,9 @@ public:
      */
     Series(const unsigned initial_size = 2, UAllocTraits_t traits = UAllocTraits_t(),
         unsigned alignment = MBED_UTIL_POOL_ALLOC_DEFAULT_ALIGN)
-        : _onError(ExceptionHandler_t(NULL)),
-        _finally(ExceptionHandler_t(NULL)),
-        _doneCB(DoneCB_t(NULL)),
+        : _onError(ErrorHandler(NULL)),
+        _finally(ErrorHandler(NULL)),
+        _doneCB(DoneCB(NULL)),
         _index(0), _inCB(false), _callNext(false), _inErrCB(false), _errNeedsResolution(false), _done(false)
     {
         _callList.init(initial_size, ARRAY_GROWBY, traits, alignment);
@@ -93,9 +90,9 @@ public:
      */
     Series(const Series &series, UAllocTraits_t traits = UAllocTraits_t(),
         unsigned alignment = MBED_UTIL_POOL_ALLOC_DEFAULT_ALIGN)
-        :_onError(ExceptionHandler_t(NULL)),
-        _finally(ExceptionHandler_t(NULL)),
-        _doneCB(DoneCB_t(NULL)),
+        :_onError(ErrorHandler(NULL)),
+        _finally(ErrorHandler(NULL)),
+        _doneCB(DoneCB(NULL)),
         _index(0), _inCB(false), _callNext(false), _inErrCB(false), _errNeedsResolution(false), _done(false)
     {
         const unsigned init_elements = series._callList.get_num_elements();
@@ -122,7 +119,7 @@ public:
      * @param[in] series The existing series to call
      * @return A reference to the series object
      */
-    Series & call(const Action_t & action)
+    Series & call(const Action & action)
     {
         _callList.push_back(action);
         return *this;
@@ -133,7 +130,7 @@ public:
      * @param[in] series The existing series to call
      * @return A reference to the series object
      */
-    inline Series & then(const Action_t & action) {
+    inline Series & then(const Action & action) {
         return call(action);
     }
     /**
@@ -142,7 +139,7 @@ public:
      * @param[in] handler The function to call when E indicates an error
      * @return A reference to the series object
      */
-    Series & except(const ExceptionHandler_t & handler)
+    Series & except(const ErrorHandler & handler)
     {
         _onError = handler;
         return *this;
@@ -155,7 +152,7 @@ public:
      * @param[in] handler The function to call when the series is done
      * @return A reference to the series object
      */
-    Series & finally(const ExceptionHandler_t & handler)
+    Series & finally(const ErrorHandler & handler)
     {
         _finally = handler;
         return *this;
@@ -165,7 +162,7 @@ public:
      * The done callback is passed to the finally callback.
      * @param[in] done a handler to call when the series completes
      */
-    void go(DoneCB_t done = DoneCB_t(NULL))
+    void go(DoneCB done = DoneCB(NULL))
     {
         _index = 0;
         _inCB = false;
@@ -175,33 +172,28 @@ public:
         _errNeedsResolution = false;
         _done = false;
         CallNext(E());
-        //_callList[_index](DoneCB_t(this, &Series::CallNext));
+        //_callList[_index](DoneCB(this, &Series::CallNext));
     }
 
-    Action_t callable(DoneCB_t done)
+    Action callable(DoneCB done = DoneCB(NULL))
     {
-        return Action_t(this, &Series::go);
+        _doneCB = done;
+        return Action(this, &Series::go);
     }
 
+protected:
 
     /**
      * Call the next function in the series.
-     * Because this handler can be called under many circumstances, this functions is complex
-     * Possible state:
-     * +---+--------+-------+------+---------+--------------------------+
-     * | e | in Err | in CB | done | onError | Action                   |
-     * +---+--------+-------+------+---------+--------------------------+
-     * | 1 |    1   |   X   |   X  |    X    | Exit                     |
-     * | 1 |    0   |   X   |   X  |    0    | Exit                     |
-     * | 1 |    0   |   X   |   X  |    1    | Call onError with e      |
-     * | 0 |    1   |   X   |   X  |    X    | Set callNext and return  |
-     * | 0 |    0   |   1   |   X  |    X    | Set callNext and return  |
-     * | 0 |    0   |   0   |   1  |    X    | Exit                     |
-     * | 0 |    0   |   0   |   0  |    X    | Call next function       |
-     * +---+--------+-------+------+---------+--------------------------+
-     *
-     * If CallNext is called recursively, it should always defer processing to less nested calls
-     * CallNext should ignore defered processing
+     * Because this handler can be called under many circumstances, this functions is complex.
+     * Decision points:
+     *     1) If the series has completed for any reason, calling this function should do nothing
+     *     2) If an error is passed in and there is no handler, exit
+     *     3) If an error is passed in and a previous error has not been resolved, exit
+     *     4) If a previous error has not been resolved and no error is passed in, return to normal execution
+     *     5) If no error is passed in:
+     *         i) if a callback is in progress, defer execution to a higher stack frame
+     *         ii) if execution proceeds to the last callback, exit with no error
      *
      * @param[in] e An error type. When e is castable to true, an error is indicated
      */
@@ -217,7 +209,7 @@ public:
             } else if (_onError) {
                 _errNeedsResolution = true;
                 _inErrCB = true;
-                _onError(DoneCB_t(this, &Series::CallNext), e);
+                _onError(DoneCB(this, &Series::CallNext), e);
                 _inErrCB = false;
                 if (_errNeedsResolution) {
                     return;
@@ -241,20 +233,19 @@ public:
                 exit(E());
                 _callNext = false;
             } else {
-                _callList[_index](DoneCB_t(this, &Series::CallNext));
+                _callList[_index](DoneCB(this, &Series::CallNext));
                 _index++;
             }
             _inCB = false;
         } while (_callNext && !_done && !_errNeedsResolution);
     }
-protected:
     void exit(E e)
     {
         _done = true;
         if (_finally && _doneCB) {
             _finally(_doneCB, e);
         } else if (_finally && !_doneCB) {
-            _finally(DoneCB_t(&Series::nullcb), e);
+            _finally(DoneCB(&Series::nullcb), e);
         } else if (_doneCB) {
             _doneCB(e);
         }
@@ -262,10 +253,10 @@ protected:
 
 protected:
     static void nullcb(E e) {(void)e;}
-    SeriesArray_t _callList;
-    ExceptionHandler_t _onError;
-    ExceptionHandler_t _finally;
-    DoneCB_t _doneCB;
+    SeriesArray _callList;
+    ErrorHandler _onError;
+    ErrorHandler _finally;
+    DoneCB _doneCB;
     unsigned _index;
     bool _inCB;
     bool _callNext;
