@@ -1,0 +1,22 @@
+{
+  "name": "async-util",
+  "version": "0.0.0",
+  "description": "Utilities for asynchronous programming",
+  "keywords": [
+    "async"
+  ],
+  "author": "brendan.moran@arm.com <Brendan Moran>",
+  "repository": {
+    "url": "git@github.com:ARMmbed/async-utils.git",
+    "type": "git"
+  },
+  "homepage": "https://github.com/ARMmbed/async-utils",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "core-util": "^1.0.1"
+  },
+  "testDependencies" : {
+    "minar" : "^1.0.1",
+    "mbed-drivers":"~0.11.1"
+  }
+}
