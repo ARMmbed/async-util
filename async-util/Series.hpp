@@ -49,7 +49,7 @@ namespace v0 {
  *
  * To call the first function in the series, call go().
  *
- * Error codes are handled via CallNext(). The template of Series allows configuring the error handling in a type-safe
+ * Error codes are handled via next(). The template of Series allows configuring the error handling in a type-safe
  * way. <typename E> must be castable to bool. If E evaluates to false, no error is handled. If E evaluates to true,
  * the handler set in except() is called.
  */
@@ -132,7 +132,7 @@ public:
     }
     /**
      * Set the error handler
-     * The function passed to except is called when the argument to CallNext is castable to true
+     * The function passed to except is called when the argument to next is castable to true
      * @param[in] handler The function to call when E indicates an error
      * @return A reference to the series object
      */
@@ -168,8 +168,8 @@ public:
         _inErrCB = false;
         _errNeedsResolution = false;
         _done = false;
-        CallNext(E());
-        //_callList[_index](DoneCB(this, &Series::CallNext));
+        next(E());
+        //_callList[_index](DoneCB(this, &Series::next));
     }
 
     Action callable(DoneCB done = DoneCB(NULL))
@@ -194,7 +194,7 @@ protected:
      *
      * @param[in] e An error type. When e is castable to true, an error is indicated
      */
-    void CallNext(E e)
+    void next(E e)
     {
         if (_done) {
             return;
@@ -206,7 +206,7 @@ protected:
             } else if (_onError) {
                 _errNeedsResolution = true;
                 _inErrCB = true;
-                _onError(DoneCB(this, &Series::CallNext), e);
+                _onError(DoneCB(this, &Series::next), e);
                 _inErrCB = false;
                 if (_errNeedsResolution) {
                     return;
@@ -230,7 +230,7 @@ protected:
                 exit(E());
                 _callNext = false;
             } else {
-                _callList[_index](DoneCB(this, &Series::CallNext));
+                _callList[_index](DoneCB(this, &Series::next));
                 _index++;
             }
             _inCB = false;

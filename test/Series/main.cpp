@@ -59,7 +59,7 @@ void generate(struct testCase_s *testCase) {
     testCase->cbExpect = (eCnt > testCase->errors?1:0);
 }
 
-bool nextTest(struct testCase_s *testCase) {
+bool next(struct testCase_s *testCase) {
     if (testCase->errors < MaximumErrors) {
         testCase->errors++;
     } else if (testCase->exception == ei) {
@@ -90,7 +90,7 @@ void check(int i) {
     if (0 != memcmp(&Actual, &CurrentTest, sizeof(Actual))) {
         MBED_HOSTTEST_RESULT(0);
     }
-    if (nextTest(&CurrentTest)) {
+    if (next(&CurrentTest)) {
         testIdx++;
         test();
     } else {
@@ -100,7 +100,7 @@ void check(int i) {
     }
 }
 
-void deferCheck(int i) {
+void defer_check(int i) {
     minar::Scheduler::postCallback(FunctionPointer1<void,int>(check).bind(i));
 }
 
@@ -125,7 +125,7 @@ void test() {
     if ((testIdx & 0xFF) == 0){
         printf("Test %u\r\n",testIdx);
     }
-    minar::Scheduler::postCallback(iSeries::Action(ser, &iSeries::go).bind(deferCheck));
+    minar::Scheduler::postCallback(iSeries::Action(ser, &iSeries::go).bind(defer_check));
 }
 extern "C" void app_start(int argc, char *argv[])
 {
