@@ -1,6 +1,6 @@
 {
   "name": "async-util",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Utilities for asynchronous programming",
   "keywords": [
     "async"
@@ -15,8 +15,8 @@
   "dependencies": {
     "core-util": "^1.0.1"
   },
-  "testDependencies" : {
-    "minar" : "^1.0.1",
-    "mbed-drivers":"^1.0.0"
+  "testDependencies": {
+    "minar": "^1.0.1",
+    "mbed-drivers": "^1.0.0"
   }
 }
