@@ -142,7 +142,7 @@ void test() {
     }
     minar::Scheduler::postCallback(iSeries::Action(ser, &iSeries::go).bind(defer_check));
 }
-extern "C" void app_start(int argc, char *argv[])
+void app_start(int argc, char *argv[])
 {
     (void) argc;
     (void) argv;
